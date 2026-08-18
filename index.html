@@ -318,14 +318,14 @@
     }
 
     function checkLevelUp() {
-        // Naikkkan level setiap kelipatan 10 poin
+        // Naikkan level setiap kelipatan 10 poin
         let newLevel = Math.floor(score / 10) + 1;
         if (newLevel > level) {
             level = newLevel;
-            speed = 3 + (level - 1) * 0.5; // Kecepatan rintangan meningkat
+            speed = 3 + (level - 1) * 0.5; // Kecepatan pergerakan bertambah
             levelEl.textContent = level;
             
-            // Efek Animasi Level Up
+            // Animasi visual pop-up "LEVEL UP!"
             levelToast.classList.add('show');
             setTimeout(() => {
                 levelToast.classList.remove('show');
@@ -378,7 +378,6 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Background Grid Dynamics
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
         ctx.lineWidth = 1;
         for (let i = 0; i < canvas.width; i += 30) {
@@ -388,7 +387,6 @@
             ctx.stroke();
         }
 
-        // Spawn Interval Sesuai Kecepatan Level
         let spawnRate = Math.max(50, Math.floor(90 - (level - 1) * 5));
         if (frame % spawnRate === 0) {
             let obs = new Obstacle();
