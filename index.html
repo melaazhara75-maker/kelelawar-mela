@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CyberBat: Neon Flight</title>
+    <title>CyberBat: Neon Flight - Level Edition</title>
     <style>
         * {
             margin: 0;
@@ -39,15 +39,35 @@
             height: 100%;
             pointer-events: none;
             display: flex;
-            flex-direction: column;
             justify-content: space-between;
             padding: 20px;
         }
-        .score-board {
-            font-size: 24px;
+        .hud-item {
+            font-size: 20px;
             font-weight: bold;
             color: #00f2fe;
-            text-shadow: 0 0 10px #00f2fe, 0 0 20px #00f2fe;
+            text-shadow: 0 0 10px #00f2fe;
+        }
+        .level-badge {
+            color: #ff007f;
+            text-shadow: 0 0 10px #ff007f;
+        }
+        #level-up-toast {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 36px;
+            font-weight: 900;
+            color: #ffe600;
+            text-shadow: 0 0 20px #ffe600, 0 0 40px #ff007f;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        #level-up-toast.show {
+            opacity: 1;
+            transform: translate(-50%, -70%);
         }
         #game-over-screen {
             position: absolute;
@@ -74,6 +94,7 @@
             font-size: 18px;
             color: #4facfe;
             margin-bottom: 25px;
+            text-align: center;
         }
         .btn {
             background: linear-gradient(45deg, #ff007f, #7928ca);
@@ -102,11 +123,13 @@
 <div id="game-container">
     <canvas id="gameCanvas" width="400" height="600"></canvas>
     <div id="ui-overlay">
-        <div class="score-board">SKOR: <span id="score">0</span></div>
+        <div class="hud-item">SKOR: <span id="score">0</span></div>
+        <div class="hud-item level-badge">LEVEL: <span id="level">1</span></div>
     </div>
+    <div id="level-up-toast">LEVEL UP!</div>
     <div id="game-over-screen">
         <h1 id="title-text">CYBER BAT</h1>
-        <p id="sub-text">Tekan Tombol / Klik Untuk Terbang</p>
+        <p id="sub-text">Tekan SPASI / Klik Untuk Terbang</p>
         <button class="btn" id="start-btn" onclick="startGame()">MAIN SEKARANG</button>
     </div>
 </div>
@@ -116,17 +139,19 @@
     const ctx = canvas.getContext('2d');
 
     const scoreEl = document.getElementById('score');
+    const levelEl = document.getElementById('level');
+    const levelToast = document.getElementById('level-up-toast');
     const gameOverScreen = document.getElementById('game-over-screen');
     const titleText = document.getElementById('title-text');
     const subText = document.getElementById('sub-text');
     const startBtn = document.getElementById('start-btn');
 
-    // Game State
     let isRunning = false;
     let score = 0;
+    let level = 1;
+    let speed = 3;
     let frame = 0;
 
-    // Bat Object
     const bat = {
         x: 80,
         y: 250,
@@ -141,11 +166,9 @@
             ctx.save();
             ctx.translate(this.x, this.y);
 
-            // Neon Glow Effect
             ctx.shadowBlur = 15;
             ctx.shadowColor = '#00f2fe';
 
-            // Sayap Kiri
             ctx.fillStyle = '#ff007f';
             ctx.beginPath();
             ctx.moveTo(-5, 0);
@@ -153,20 +176,17 @@
             ctx.quadraticCurveTo(-15, 5, -5, 0);
             ctx.fill();
 
-            // Sayap Kanan
             ctx.beginPath();
             ctx.moveTo(5, 0);
             ctx.quadraticCurveTo(25, -20 + Math.sin(this.wingAngle) * 12, 30, 10);
             ctx.quadraticCurveTo(15, 5, 5, 0);
             ctx.fill();
 
-            // Badan Utama
             ctx.fillStyle = '#00f2fe';
             ctx.beginPath();
             ctx.arc(0, 0, this.radius - 4, 0, Math.PI * 2);
             ctx.fill();
 
-            // Telinga Cyber
             ctx.fillStyle = '#7928ca';
             ctx.beginPath();
             ctx.moveTo(-8, -8);
@@ -180,7 +200,6 @@
             ctx.lineTo(3, -12);
             ctx.fill();
 
-            // Mata Neon
             ctx.fillStyle = '#ffffff';
             ctx.shadowBlur = 10;
             ctx.shadowColor = '#ffffff';
@@ -197,7 +216,6 @@
             this.y += this.velocity;
             this.wingAngle += this.wingSpeed;
 
-            // Batas Atas dan Bawah
             if (this.y + this.radius > canvas.height) {
                 this.y = canvas.height - this.radius;
                 endGame();
@@ -213,7 +231,6 @@
         }
     };
 
-    // Array Obstacles & Collectibles
     let obstacles = [];
     let crystals = [];
 
@@ -221,36 +238,52 @@
         constructor() {
             this.x = canvas.width;
             this.width = 45;
-            this.gap = 150;
+            // Celah rintangan semakin sempit jika level bertambah
+            this.gap = Math.max(110, 150 - (level - 1) * 8); 
             this.topHeight = Math.floor(Math.random() * (canvas.height - this.gap - 100)) + 40;
             this.bottomHeight = canvas.height - this.topHeight - this.gap;
             this.passed = false;
+            
+            // Pergerakan laser vertikal (hanya aktif di level >= 3)
+            this.moveOffset = 0;
+            this.moveSpeed = (level >= 3) ? (Math.random() > 0.5 ? 1 : -1) * (0.5 + level * 0.2) : 0;
         }
 
         draw() {
             ctx.save();
             ctx.shadowBlur = 12;
-            ctx.shadowColor = '#ff007f';
+            ctx.shadowColor = level >= 4 ? '#ffe600' : '#ff007f';
 
-            // Obstacle Atas
+            let currentTop = this.topHeight + this.moveOffset;
+            let currentBottom = canvas.height - currentTop - this.gap;
+
+            // Neon Top Pillar
             let gradTop = ctx.createLinearGradient(this.x, 0, this.x + this.width, 0);
             gradTop.addColorStop(0, '#ff007f');
             gradTop.addColorStop(1, '#7928ca');
             ctx.fillStyle = gradTop;
-            ctx.fillRect(this.x, 0, this.width, this.topHeight);
+            ctx.fillRect(this.x, 0, this.width, currentTop);
 
-            // Obstacle Bawah
-            let gradBot = ctx.createLinearGradient(this.x, canvas.height - this.bottomHeight, this.x + this.width, canvas.height);
+            // Neon Bottom Pillar
+            let gradBot = ctx.createLinearGradient(this.x, canvas.height - currentBottom, this.x + this.width, canvas.height);
             gradBot.addColorStop(0, '#7928ca');
             gradBot.addColorStop(1, '#ff007f');
             ctx.fillStyle = gradBot;
-            ctx.fillRect(this.x, canvas.height - this.bottomHeight, this.width, this.bottomHeight);
+            ctx.fillRect(this.x, canvas.height - currentBottom, this.width, currentBottom);
 
             ctx.restore();
         }
 
         update() {
-            this.x -= 3;
+            this.x -= speed;
+            
+            // Update pergerakan naik-turun laser di level tinggi
+            if (level >= 3) {
+                this.moveOffset += this.moveSpeed;
+                if (this.moveOffset > 30 || this.moveOffset < -30) {
+                    this.moveSpeed *= -1;
+                }
+            }
         }
     }
 
@@ -280,11 +313,26 @@
         }
 
         update() {
-            this.x -= 3;
+            this.x -= speed;
         }
     }
 
-    // Input Handlers
+    function checkLevelUp() {
+        // Naikkkan level setiap kelipatan 10 poin
+        let newLevel = Math.floor(score / 10) + 1;
+        if (newLevel > level) {
+            level = newLevel;
+            speed = 3 + (level - 1) * 0.5; // Kecepatan rintangan meningkat
+            levelEl.textContent = level;
+            
+            // Efek Animasi Level Up
+            levelToast.classList.add('show');
+            setTimeout(() => {
+                levelToast.classList.remove('show');
+            }, 1200);
+        }
+    }
+
     window.addEventListener('keydown', (e) => {
         if (e.code === 'Space') {
             if (!isRunning && gameOverScreen.style.display !== 'none') {
@@ -303,12 +351,15 @@
 
     function startGame() {
         score = 0;
+        level = 1;
+        speed = 3;
         frame = 0;
         obstacles = [];
         crystals = [];
         bat.y = 250;
         bat.velocity = 0;
         scoreEl.textContent = score;
+        levelEl.textContent = level;
         isRunning = true;
         gameOverScreen.classList.add('hidden');
         gameLoop();
@@ -317,7 +368,7 @@
     function endGame() {
         isRunning = false;
         titleText.textContent = "GAME OVER";
-        subText.textContent = "Skor Akhir: " + score;
+        subText.innerHTML = `Skor Akhir: <b>${score}</b><br>Level Mencapai: <b>${level}</b>`;
         startBtn.textContent = "MAIN LAGI";
         gameOverScreen.classList.remove('hidden');
     }
@@ -325,10 +376,9 @@
     function gameLoop() {
         if (!isRunning) return;
 
-        // Clear Canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Grid Background Futuristik
+        // Background Grid Dynamics
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
         ctx.lineWidth = 1;
         for (let i = 0; i < canvas.width; i += 30) {
@@ -338,31 +388,33 @@
             ctx.stroke();
         }
 
-        // Spawn Obstacles & Crystals
-        if (frame % 90 === 0) {
+        // Spawn Interval Sesuai Kecepatan Level
+        let spawnRate = Math.max(50, Math.floor(90 - (level - 1) * 5));
+        if (frame % spawnRate === 0) {
             let obs = new Obstacle();
             obstacles.push(obs);
             crystals.push(new Crystal(obs.x + obs.width / 2, obs.topHeight + obs.gap / 2));
         }
 
-        // Handle Obstacles
         for (let i = obstacles.length - 1; i >= 0; i--) {
             let obs = obstacles[i];
             obs.update();
             obs.draw();
 
-            // Tambah Skor Saat Melewati Obstacle
             if (!obs.passed && obs.x + obs.width < bat.x) {
                 obs.passed = true;
                 score += 1;
                 scoreEl.textContent = score;
+                checkLevelUp();
             }
 
-            // Deteksi Tabrakan Laser
+            let currentTop = obs.topHeight + obs.moveOffset;
+            let currentBottom = canvas.height - currentTop - obs.gap;
+
             if (
                 bat.x + bat.radius > obs.x &&
                 bat.x - bat.radius < obs.x + obs.width &&
-                (bat.y - bat.radius < obs.topHeight || bat.y + bat.radius > canvas.height - obs.bottomHeight)
+                (bat.y - bat.radius < currentTop || bat.y + bat.radius > canvas.height - currentBottom)
             ) {
                 endGame();
             }
@@ -372,18 +424,17 @@
             }
         }
 
-        // Handle Crystals
         for (let i = crystals.length - 1; i >= 0; i--) {
             let cry = crystals[i];
             cry.update();
             cry.draw();
 
-            // Deteksi Ambil Kristal
             let dist = Math.hypot(bat.x - cry.x, bat.y - cry.y);
             if (!cry.collected && dist < bat.radius + cry.size) {
                 cry.collected = true;
-                score += 3; // Bonus skor kristal
+                score += 3;
                 scoreEl.textContent = score;
+                checkLevelUp();
             }
 
             if (cry.x < -20) {
@@ -391,7 +442,6 @@
             }
         }
 
-        // Handle Bat
         bat.update();
         bat.draw();
 
